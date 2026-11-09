@@ -3,6 +3,11 @@ node_modules/
 .vercel/
 .vercel_build_output/
 
+# Test & Coverage Artifacts
+playwright-report/
+test-results/
+coverage/
+
 # OS Files
 .DS_Store
 Thumbs.db

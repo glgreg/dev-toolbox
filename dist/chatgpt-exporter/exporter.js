@@ -1,51 +1,94 @@
+/**
+ * @typedef {object} ConversationTurn
+ * @property {string} id Message turn ID.
+ * @property {'user' | 'assistant'} role Speaker role.
+ * @property {string | null} model Model slug if available.
+ * @property {number | null} timestamp Unix timestamp in seconds if available.
+ * @property {string} content Normalized text content.
+ */
+
+/**
+ * @typedef {object} ChatGPTConversationData
+ * @property {string} [title] Conversation title.
+ * @property {number} [create_time] Unix creation timestamp in seconds.
+ * @property {string} [default_model_slug] Default model identifier.
+ * @property {Array<Record<string, any>>} [linear_conversation] Linear turn array.
+ * @property {Record<string, Record<string, any>>} [mapping] DAG conversation mapping.
+ * @property {string} [current_node] Current leaf node ID in mapping DAG.
+ */
+
+/**
+ * ChatGPT Share Exporter client-side controller.
+ */
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
-  const shareUrlInput = document.getElementById('input-share-url');
-  const fetchBtn = document.getElementById('btn-fetch');
-  const fetchStatus = document.getElementById('fetch-status');
+  const shareUrlInput = /** @type {HTMLInputElement} */ (document.getElementById('input-share-url'));
+  const fetchBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-fetch'));
+  const fetchStatus = /** @type {HTMLElement} */ (document.getElementById('fetch-status'));
 
-  const exportCard = document.getElementById('export-card');
-  const chatTitle = document.getElementById('chat-title');
-  const chatMeta = document.getElementById('chat-meta');
+  const exportCard = /** @type {HTMLElement} */ (document.getElementById('export-card'));
+  const chatTitle = /** @type {HTMLElement} */ (document.getElementById('chat-title'));
+  const chatMeta = /** @type {HTMLElement} */ (document.getElementById('chat-meta'));
 
-  const downloadMdBtn = document.getElementById('btn-download-md');
-  const downloadJsonlBtn = document.getElementById('btn-download-jsonl');
-  const downloadTxtBtn = document.getElementById('btn-download-txt');
-  const copyMdBtn = document.getElementById('btn-copy-md');
-  const copyFeedback = document.getElementById('copy-feedback');
+  const downloadMdBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-download-md'));
+  const downloadJsonlBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-download-jsonl'));
+  const downloadTxtBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-download-txt'));
+  const copyMdBtn = /** @type {HTMLButtonElement} */ (document.getElementById('btn-copy-md'));
+  const copyFeedback = /** @type {HTMLElement} */ (document.getElementById('copy-feedback'));
 
-  const tabPreviewMd = document.getElementById('tab-preview-md');
-  const tabPreviewJsonl = document.getElementById('tab-preview-jsonl');
-  const tabPreviewTxt = document.getElementById('tab-preview-txt');
-  const previewPanel = document.getElementById('preview-panel');
+  const tabPreviewMd = /** @type {HTMLButtonElement} */ (document.getElementById('tab-preview-md'));
+  const tabPreviewJsonl = /** @type {HTMLButtonElement} */ (document.getElementById('tab-preview-jsonl'));
+  const tabPreviewTxt = /** @type {HTMLButtonElement} */ (document.getElementById('tab-preview-txt'));
+  const previewPanel = /** @type {HTMLElement} */ (document.getElementById('preview-panel'));
 
   // State
+  /** @type {ChatGPTConversationData | null} */
   let currentData = null;
+  /** @type {ConversationTurn[]} */
   let currentTurns = [];
   let currentSourceUrl = '';
+  /** @type {'md' | 'jsonl' | 'txt'} */
   let activePreviewTab = 'md';
 
-  // API Endpoint Resolver
+  /**
+   * Builds the relative API endpoint URL for a given share ID.
+   * @param {string} shareId Validated UUID v4 share ID.
+   * @returns {string} API URL path.
+   */
   const getApiUrl = (shareId) => {
     return `/api/chatgpt?shareId=${encodeURIComponent(shareId)}`;
   };
 
-  // Helper: Extract UUID
+  /**
+   * Extracts a UUID v4 share identifier from a URL or raw string.
+   * @param {string} input Raw input from the user.
+   * @returns {string | null} Matched UUID v4 or null.
+   */
   const extractShareId = (input) => {
     const trimmed = input.trim();
     const match = trimmed.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
     return match ? match[1] : null;
   };
 
-  // Helper: Sanitize filename
+  /**
+   * Sanitizes a conversation title into a safe download filename stem.
+   * @param {string | undefined} title Raw conversation title.
+   * @param {string} defaultName Fallback filename stem.
+   * @returns {string} Sanitized filename stem.
+   */
   const sanitizeFilename = (title, defaultName) => {
     if (!title) return defaultName;
     const clean = title.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 50);
     return clean || defaultName;
   };
 
-  // Parser: Extract conversation turns from ChatGPT data
+  /**
+   * Extracts ordered user and assistant dialogue turns from ChatGPT conversation data.
+   * @param {ChatGPTConversationData} data Raw ChatGPT share data payload.
+   * @returns {ConversationTurn[]} Array of normalized turns.
+   */
   const extractTurns = (data) => {
+    /** @type {ConversationTurn[]} */
     const turns = [];
 
     // Method 1: Try linear_conversation array (default in modern shares)
@@ -57,23 +100,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const role = msg.author?.role;
         if (role !== 'user' && role !== 'assistant') continue;
 
-        const parts = msg.content?.parts || [];
-        const textParts = parts.filter(p => typeof p === 'string' && p.trim().length > 0);
+        const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [];
+        const textParts = parts.filter((/** @type {unknown} */ p) => typeof p === 'string' && p.trim().length > 0);
         if (textParts.length === 0) continue;
 
         turns.push({
-          id: msg.id,
+          id: String(msg.id || ''),
           role,
           model: msg.metadata?.model_slug || msg.metadata?.resolved_model_slug || null,
-          timestamp: msg.create_time || null,
-          content: textParts.join('\n\n').trim()
+          timestamp: typeof msg.create_time === 'number' ? msg.create_time : null,
+          content: textParts.join('\n\n').trim(),
         });
       }
     }
 
     // Method 2: Fallback to mapping DAG graph traversal if linear_conversation is empty
     if (turns.length === 0 && data.mapping && data.current_node) {
+      /** @type {string | null | undefined} */
       let nodeId = data.current_node;
+      /** @type {ConversationTurn[]} */
       const mappingTurns = [];
 
       while (nodeId && data.mapping[nodeId]) {
@@ -83,15 +128,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (msg) {
           const role = msg.author?.role;
           if (role === 'user' || role === 'assistant') {
-            const parts = msg.content?.parts || [];
-            const textParts = parts.filter(p => typeof p === 'string' && p.trim().length > 0);
+            const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [];
+            const textParts = parts.filter((/** @type {unknown} */ p) => typeof p === 'string' && p.trim().length > 0);
             if (textParts.length > 0) {
               mappingTurns.push({
-                id: msg.id,
+                id: String(msg.id || ''),
                 role,
                 model: msg.metadata?.model_slug || msg.metadata?.resolved_model_slug || null,
-                timestamp: msg.create_time || null,
-                content: textParts.join('\n\n').trim()
+                timestamp: typeof msg.create_time === 'number' ? msg.create_time : null,
+                content: textParts.join('\n\n').trim(),
               });
             }
           }
@@ -106,7 +151,13 @@ document.addEventListener('DOMContentLoaded', () => {
     return turns;
   };
 
-  // Format Generators
+  /**
+   * Formats conversation data and turns into a Markdown document.
+   * @param {ChatGPTConversationData} data Conversation metadata.
+   * @param {ConversationTurn[]} turns Extracted dialogue turns.
+   * @param {string} sourceUrl Original share URL.
+   * @returns {string} Formatted Markdown string.
+   */
   const generateMarkdown = (data, turns, sourceUrl) => {
     const title = (data.title || 'ChatGPT Conversation').trim();
     const dateStr = data.create_time
@@ -127,12 +178,18 @@ document.addEventListener('DOMContentLoaded', () => {
     return md;
   };
 
+  /**
+   * Formats extracted turns into JSON Lines (.jsonl) format.
+   * @param {ConversationTurn[]} turns Extracted dialogue turns.
+   * @returns {string} Formatted JSONL string.
+   */
   const generateJsonl = (turns) => {
     return turns.map((turn, index) => {
+      /** @type {Record<string, unknown>} */
       const obj = {
         index: index + 1,
         role: turn.role,
-        content: turn.content
+        content: turn.content,
       };
       if (turn.model) obj.model = turn.model;
       if (turn.timestamp) obj.timestamp = turn.timestamp;
@@ -140,6 +197,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('\n') + '\n';
   };
 
+  /**
+   * Formats conversation data and turns into a plain text transcript.
+   * @param {ChatGPTConversationData} data Conversation metadata.
+   * @param {ConversationTurn[]} turns Extracted dialogue turns.
+   * @param {string} sourceUrl Original share URL.
+   * @returns {string} Formatted plain text string.
+   */
   const generatePlainText = (data, turns, sourceUrl) => {
     const title = (data.title || 'ChatGPT Conversation').trim();
     const dateStr = data.create_time
@@ -161,7 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
     return txt;
   };
 
-  // Trigger File Download
+  /**
+   * Triggers a client-side file download using a Blob and object URL.
+   * @param {string} content File text content.
+   * @param {string} filename Target download filename.
+   * @param {string} mimeType MIME type string.
+   * @returns {void}
+   */
   const triggerDownload = (content, filename, mimeType) => {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -174,7 +244,12 @@ document.addEventListener('DOMContentLoaded', () => {
     URL.revokeObjectURL(url);
   };
 
-  // Status helper
+  /**
+   * Displays a status message in the fetch status container.
+   * @param {string} msg Status text to display.
+   * @param {'error' | 'success' | 'info'} type Status visual variant.
+   * @returns {void}
+   */
   const showStatus = (msg, type) => {
     fetchStatus.style.display = 'block';
     if (type === 'error') {
@@ -186,7 +261,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Update UI with Parsed Data
+  /**
+   * Renders parsed conversation metadata and updates the preview panel.
+   * @param {ChatGPTConversationData} data Conversation payload.
+   * @param {string} sourceUrl Source share URL.
+   * @returns {void}
+   */
   const renderConversationUI = (data, sourceUrl) => {
     currentData = data;
     currentSourceUrl = sourceUrl;
@@ -202,10 +282,10 @@ document.addEventListener('DOMContentLoaded', () => {
     chatTitle.textContent = title;
 
     // Calculate metadata
-    const userCount = currentTurns.filter(t => t.role === 'user').length;
-    const assistantCount = currentTurns.filter(t => t.role === 'assistant').length;
+    const userCount = currentTurns.filter((t) => t.role === 'user').length;
+    const assistantCount = currentTurns.filter((t) => t.role === 'assistant').length;
     const totalChars = currentTurns.reduce((acc, t) => acc + t.content.length, 0);
-    const modelSlug = currentTurns.find(t => t.model)?.model || data.default_model_slug || 'Standard';
+    const modelSlug = currentTurns.find((t) => t.model)?.model || data.default_model_slug || 'Standard';
 
     chatMeta.innerHTML = `
       <span class="badge" style="background-color: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-color);">${currentTurns.length} turns</span>
@@ -220,7 +300,10 @@ document.addEventListener('DOMContentLoaded', () => {
     showStatus(`Successfully parsed "${title}" (${currentTurns.length} turns). Ready to download.`, 'success');
   };
 
-  // Update Preview Panel
+  /**
+   * Refreshes the preview panel text according to the active format tab.
+   * @returns {void}
+   */
   const updatePreview = () => {
     if (!currentData || currentTurns.length === 0) return;
 
@@ -233,9 +316,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Preview Tabs switching
+  /**
+   * Switches the active format preview tab and updates ARIA state.
+   * @param {'md' | 'jsonl' | 'txt'} tabName Selected tab format identifier.
+   * @param {HTMLButtonElement} activeBtn Selected tab button element.
+   * @returns {void}
+   */
   const switchPreviewTab = (tabName, activeBtn) => {
-    [tabPreviewMd, tabPreviewJsonl, tabPreviewTxt].forEach(b => {
+    [tabPreviewMd, tabPreviewJsonl, tabPreviewTxt].forEach((b) => {
       b.classList.remove('tab-button--active');
       b.setAttribute('aria-selected', 'false');
     });
@@ -249,7 +337,10 @@ document.addEventListener('DOMContentLoaded', () => {
   tabPreviewJsonl.addEventListener('click', () => switchPreviewTab('jsonl', tabPreviewJsonl));
   tabPreviewTxt.addEventListener('click', () => switchPreviewTab('txt', tabPreviewTxt));
 
-  // Action: Fetch remote chat via serverless proxy
+  /**
+   * Fetches the shared conversation payload via the serverless proxy.
+   * @returns {Promise<void>}
+   */
   const fetchSharedChat = async () => {
     const rawInput = shareUrlInput.value.trim();
     const shareId = extractShareId(rawInput);
@@ -266,29 +357,32 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch(getApiUrl(shareId), {
         method: 'GET',
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json' },
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server returned HTTP ${response.status}`);
+        const errorData = /** @type {Record<string, unknown>} */ (await response.json().catch(() => ({})));
+        throw new Error(String(errorData.error || `Server returned HTTP ${response.status}`));
       }
 
-      const data = await response.json();
+      const data = /** @type {ChatGPTConversationData} */ (await response.json());
       renderConversationUI(data, rawInput.startsWith('http') ? rawInput : `https://chatgpt.com/share/${shareId}`);
     } catch (err) {
-      showStatus(`Failed to fetch chat: ${err.message}`, 'error');
+      const message = err instanceof Error ? err.message : String(err);
+      showStatus(`Failed to fetch chat: ${message}`, 'error');
     } finally {
       fetchBtn.classList.remove('button--disabled');
       fetchBtn.disabled = false;
     }
   };
 
-  fetchBtn.addEventListener('click', fetchSharedChat);
+  fetchBtn.addEventListener('click', () => {
+    void fetchSharedChat();
+  });
   shareUrlInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      fetchSharedChat();
+      void fetchSharedChat();
     }
   });
 
@@ -324,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
         copyFeedback.style.display = 'none';
       }, 2500);
-    } catch (err) {
+    } catch {
       alert('Unable to copy to clipboard.');
     }
   });

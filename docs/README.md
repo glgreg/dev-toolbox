@@ -27,6 +27,8 @@ This documentation root is structured by tool/topic directories. As new develope
 ```
 docs/
 |-- README.md                 # Primary architecture index (this file)
+|-- jwt/                      # JWT Debugger & Inspector specs and upcoming tool blueprints
+|   `-- README.md             # Security model, RFC standards, and upcoming implementation blueprints
 |-- index_now/                # Context and limits for the IndexNow Submitter tool
 |   `-- API_LIMITS.md         # Active KV rate limits, proxy architecture, and abuse prevention details
 `-- chatgpt_exporter/         # Context and specifications for ChatGPT Share Exporter
@@ -35,6 +37,7 @@ docs/
 
 Relative references:
 - Primary root documentation: [./README.md](./README.md)
+- JWT Debugger & upcoming blueprints: [./jwt/README.md](./jwt/README.md)
 - IndexNow limits: [./index_now/API_LIMITS.md](./index_now/API_LIMITS.md)
 - ChatGPT Exporter specs: [./chatgpt_exporter/README.md](./chatgpt_exporter/README.md)
 - Frontend assets root: [../dist/](../dist/)

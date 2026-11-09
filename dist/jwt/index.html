@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JWT Debugger & Inspector | dev.gregorium.com</title>
+  <meta name="description" content="Decode, verify, and generate JSON Web Tokens locally in your browser. 100% private with native Web Crypto HMAC verification.">
+  <script>
+    (function() {
+      var saved = localStorage.getItem('theme');
+      var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="../index.css">
+  <script src="../index.js" defer></script>
+  <script src="./jwt.js" defer></script>
+</head>
+<body>
+  <div class="layout" style="max-width: 1050px;">
+    <!-- Navbar -->
+    <nav class="nav" aria-label="Main Navigation">
+      <a href="/" class="nav__brand">
+        gregorium<span class="nav__brand-sub">.dev</span>
+      </a>
+      <div class="nav__actions">
+        <!-- Back to Hub Link -->
+        <a href="../" style="font-size: var(--font-size-sm); text-decoration: none; margin-right: var(--spacing-sm);">&larr; Hub</a>
+        <!-- Theme Toggle -->
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark/light theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Header Section -->
+    <header class="header">
+      <h1 class="header__title">JWT Debugger & Inspector</h1>
+      <p class="header__subtitle">
+        Decode, inspect, and sign JSON Web Tokens 100% locally in your browser. Zero server queries, zero tracking, and absolute privacy for sensitive tokens and keys.
+      </p>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main" id="main-content">
+
+      <!-- Section 1: Encoded Token Input & Presets -->
+      <section class="card" style="margin-bottom: var(--spacing-lg);" aria-labelledby="heading-encoded">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-xs);">
+          <h2 id="heading-encoded" class="card__title">1. Encoded Token</h2>
+          <div style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
+            <button type="button" id="btn-sample-valid" class="button" style="padding: 4px 8px; font-size: var(--font-size-xs);">Sample Valid</button>
+            <button type="button" id="btn-sample-expired" class="button" style="padding: 4px 8px; font-size: var(--font-size-xs);">Sample Expired</button>
+            <button type="button" id="btn-sample-roles" class="button" style="padding: 4px 8px; font-size: var(--font-size-xs);">Sample Roles</button>
+            <button type="button" id="btn-clear" class="button" style="padding: 4px 8px; font-size: var(--font-size-xs);">Clear</button>
+            <button type="button" id="btn-copy-token" class="button button--primary" style="padding: 4px 10px; font-size: var(--font-size-xs);">Copy Token</button>
+          </div>
+        </div>
+
+        <p class="card__description" style="margin-bottom: var(--spacing-xs);">
+          Paste a JWT below or load a preset sample. Editing this input instantly updates the decoded header, payload, and signature status.
+        </p>
+
+        <div class="form-group" style="margin-bottom: var(--spacing-xs);">
+          <textarea id="input-jwt" class="textarea" style="font-family: var(--font-mono); font-size: var(--font-size-xs); min-height: 90px; line-height: 1.4;" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c" spellcheck="false"></textarea>
+        </div>
+
+        <!-- Colored Breakdown Display -->
+        <div>
+          <label class="label" style="font-size: var(--font-size-xs); margin-bottom: 4px; display: block;">Token Structure Breakdown:</label>
+          <div id="jwt-colored-display" style="background-color: var(--code-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: var(--spacing-sm); font-family: var(--font-mono); font-size: var(--font-size-xs); word-break: break-all; line-height: 1.6;">
+            <span id="jwt-color-header" style="color: #e06c75; font-weight: 500;">header</span><span style="color: var(--text-muted);">.</span><span id="jwt-color-payload" style="color: #c678dd; font-weight: 500;">payload</span><span style="color: var(--text-muted);">.</span><span id="jwt-color-signature" style="color: #61afef; font-weight: 500;">signature</span>
+          </div>
+        </div>
+
+        <div id="token-status" style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: var(--spacing-xs);"></div>
+      </section>
+
+      <!-- Section 2: Decoded Panels (Header & Payload Grid) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--spacing-lg); margin-bottom: var(--spacing-lg);">
+        
+        <!-- Header Panel -->
+        <section class="card" aria-labelledby="heading-header">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--spacing-xs);">
+            <div>
+              <h2 id="heading-header" class="card__title" style="color: #e06c75;">2. Header</h2>
+              <p class="card__description" style="font-size: var(--font-size-xs); margin-top: 2px;">
+                Algorithm &amp; Token Type
+              </p>
+            </div>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <span id="pill-alg" class="badge" style="background: rgba(224, 108, 117, 0.15); color: #e06c75;">HS256</span>
+              <span id="pill-typ" class="badge" style="background: var(--code-bg); color: var(--text-muted);">JWT</span>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: var(--spacing-xs); margin-top: var(--spacing-xs);">
+            <textarea id="header-json" class="textarea" style="font-family: var(--font-mono); font-size: var(--font-size-xs); min-height: 140px;" placeholder="{\n  &quot;alg&quot;: &quot;HS256&quot;,\n  &quot;typ&quot;: &quot;JWT&quot;\n}" spellcheck="false"></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="button" id="btn-copy-header" class="button" style="padding: 4px 10px; font-size: var(--font-size-xs);">Copy Header</button>
+          </div>
+        </section>
+
+        <!-- Payload Panel -->
+        <section class="card" aria-labelledby="heading-payload">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--spacing-xs);">
+            <div>
+              <h2 id="heading-payload" class="card__title" style="color: #c678dd;">3. Payload</h2>
+              <p class="card__description" style="font-size: var(--font-size-xs); margin-top: 2px;">
+                Claims &amp; Subject Data
+              </p>
+            </div>
+            <div id="payload-claim-summary" style="display: flex; gap: 4px; align-items: center;">
+              <!-- Dynamic claim status badges (Active/Expired) -->
+            </div>
+          </div>
+
+          <!-- Claims Introspection Box -->
+          <div id="claims-box" style="background-color: var(--code-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-xs); margin-top: var(--spacing-xs);">
+            <div id="claim-exp-row" style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="color: var(--text-muted);">exp (Expiration):</span>
+              <span id="claim-exp-val" style="font-weight: 500;">-</span>
+            </div>
+            <div id="claim-iat-row" style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="color: var(--text-muted);">iat (Issued At):</span>
+              <span id="claim-iat-val" style="font-weight: 500;">-</span>
+            </div>
+            <div id="claim-sub-row" style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">sub (Subject):</span>
+              <span id="claim-sub-val" style="font-weight: 500;">-</span>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: var(--spacing-xs); margin-top: var(--spacing-xs);">
+            <textarea id="payload-json" class="textarea" style="font-family: var(--font-mono); font-size: var(--font-size-xs); min-height: 140px;" placeholder="{\n  &quot;sub&quot;: &quot;1234567890&quot;,\n  &quot;name&quot;: &quot;John Doe&quot;\n}" spellcheck="false"></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="button" id="btn-copy-payload" class="button" style="padding: 4px 10px; font-size: var(--font-size-xs);">Copy Payload</button>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Section 3: Signature Verification & Signing Section -->
+      <section class="card" style="margin-bottom: var(--spacing-lg);" aria-labelledby="heading-signature">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--spacing-sm);">
+          <div>
+            <h2 id="heading-signature" class="card__title" style="color: #61afef;">4. Verify Signature &amp; Signer</h2>
+            <p class="card__description" style="font-size: var(--font-size-sm); margin-top: 2px;">
+              Cryptographic verification performed client-side using the native Web Crypto API (<code style="font-family: var(--font-mono); font-size: var(--font-size-xs);">crypto.subtle</code>). Secret keys never leave your machine.
+            </p>
+          </div>
+          <div id="signature-badge-container">
+            <span id="signature-status" class="badge" style="background-color: var(--code-bg); color: var(--text-muted);">No Secret Provided</span>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-sm);">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--spacing-md); align-items: flex-end;">
+            
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="select-alg" class="label">
+                HMAC Algorithm
+                <span class="label__desc">Matched automatically from the decoded header</span>
+              </label>
+              <select id="select-alg" class="select" style="margin-top: 4px;">
+                <option value="HS256" selected>HS256 (HMAC-SHA256)</option>
+                <option value="HS384">HS384 (HMAC-SHA384)</option>
+                <option value="HS512">HS512 (HMAC-SHA512)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
+              <label for="input-secret" class="label">
+                Secret Key
+                <span class="label__desc">Type or paste your signing secret</span>
+              </label>
+              <input type="text" id="input-secret" class="input" style="font-family: var(--font-mono); margin-top: 4px;" placeholder="your-256-bit-secret" value="your-256-bit-secret">
+            </div>
+
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-sm); margin-top: var(--spacing-md);">
+            <label style="display: inline-flex; align-items: center; gap: var(--spacing-xs); font-size: var(--font-size-xs); color: var(--text-muted); cursor: pointer;">
+              <input type="checkbox" id="check-base64-secret">
+              <span>Secret is Base64 encoded</span>
+            </label>
+
+            <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+              <button type="button" id="btn-verify" class="button">Verify Signature</button>
+              <button type="button" id="btn-sign" class="button button--primary">Sign &amp; Update Token</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Clipboard Feedback Banner -->
+      <div id="copy-feedback" style="position: fixed; bottom: 20px; right: 20px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 16px; font-size: var(--font-size-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none; z-index: 999;">
+        Copied to clipboard!
+      </div>
+
+      <!-- Transparency Declaration Section -->
+      <section class="transparency-banner" aria-labelledby="transparency-title">
+        <h3 class="transparency-banner__title" id="transparency-title">100% Client-Side Privacy Commitment</h3>
+        <p class="transparency-banner__text">
+          Unlike public JWT debuggers that send your authentication tokens and secret keys to external servers, this tool operates exclusively in browser memory using the native Web Crypto API (<code style="font-family: var(--font-mono);">crypto.subtle</code>). Zero network packets are transmitted. Your secrets and customer tokens never leave your local machine.
+        </p>
+      </section>
+
+    </main>
+
+    <!-- Footer Section -->
+    <footer class="footer">
+      <div class="footer__credits">
+        &copy; 2026 <a href="https://gregorium.com" target="_blank" rel="noopener">gregorium.com</a>. All rights reserved.
+      </div>
+      <div class="footer__links">
+        <a href="https://github.com/glgreg/dev-toolbox" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/glgreg/dev-toolbox/tree/main/docs" target="_blank" rel="noopener">Docs (Agent-ready)</a>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
